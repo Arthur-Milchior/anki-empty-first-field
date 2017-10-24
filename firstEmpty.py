@@ -1,12 +1,40 @@
-# Copyright: Damien Elmes <anki@ichi2.net> and Arthur Milchior <arthur@milchior.fr>
-# -*- coding: utf-8 -*-
-# License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
-"""Allows to add note with empty first field. 
-It is add-on number 46741504
+"""  -*- coding: utf-8 -*-
+Copyright: Arthur Milchior <arthur@milchior.fr>,
+Based on Damien Elmes <anki@ichi2.net>'s anki's code
+License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
+Add-on number 46741504
+Feel free to contribute on https://github.com/Arthur-Milchior/anki-empty-first-field.
 
-Feel free to contribute on https://github.com/Arthur-Milchior/anki-empty-first-field."""
+--------------------
+
+Allows notes to have an empty first field.
+Note that duplicates are not checked if no cards is sent to the first field.
+
+"maps to" does not appear anymore in the item import window. This will to use keyboard to find quickly the wanted field !
+"""
+from aqt.qt import *
+import  cgi
+import unicodedata
+import os
+import re
+import traceback
+import zipfile
+import json
+
+
+import aqt.forms
+import aqt.modelchooser
+import aqt.deckchooser
+import anki.importing as importing
+
+
+from anki.consts import NEW_CARDS_RANDOM
 from aqt.addcards import AddCards
-from aqt.utils import tooltip, showWarning,askUser
+from aqt.utils import tooltip, showWarning,askUser, getOnlyText, getFile, showText, openHelp    
+from anki.utils import timestampID, fieldChecksum
+from anki.importing.noteimp import NoteImporter
+from aqt.importing import ChangeMap
+from anki.lang import ngettext
 
 def myAddNote(self, note):
         note.model()['did'] = self.deckChooser.selectedId()
@@ -31,3 +59,172 @@ question on all cards."""), help="AddItems")
         return note
 
 AddCards.addNote = myAddNote
+
+
+##############
+#Import
+##########
+
+def mappingOk(self):
+    return True
+NoteImporter.mappingOk = mappingOk
+
+def importNotes(self, notes):
+        "Convert each card into a note, apply attributes and add to col."
+        assert self.mappingOk()
+        # note whether tags are mapped
+        self._tagsMapped = False
+        for f in self.mapping:
+            if f == "_tags":
+                self._tagsMapped = True
+        # gather checks for duplicate comparison
+        csums = {}
+        for csum, id in self.col.db.execute(
+            "select csum, id from notes where mid = ?", self.model['id']):
+            if csum in csums:
+                csums[csum].append(id)
+            else:
+                csums[csum] = [id]
+        firsts = {}#mapping sending first field of added note to true
+        fld0name = self.model['flds'][0]['name']
+        fld0idx = self.mapping.index(fld0name) if fld0name in self.mapping else None
+        self._fmap = self.col.models.fieldMap(self.model)
+        self._nextID = timestampID(self.col.db, "notes")
+        # loop through the notes
+        updates = []
+        updateLog = []
+        updateLogTxt = _("First field matched: %s")
+        dupeLogTxt = _("Added duplicate with first field: %s")
+        new = []
+        self._ids = []
+        self._cards = []
+        self._emptyNotes = False
+        dupeCount = 0
+        dupes = []#List of first field seen, present in the db, and added anyway
+        for n in notes:
+            for c in range(len(n.fields)):
+                if not self.allowHTML:
+                    n.fields[c] = cgi.escape(n.fields[c])
+                n.fields[c] = n.fields[c].strip()
+                if not self.allowHTML:
+                    n.fields[c] = n.fields[c].replace("\n", "<br>")
+                n.fields[c] = unicodedata.normalize("NFC", n.fields[c])
+            n.tags = [unicodedata.normalize("NFC", t) for t in n.tags]
+            ###########start test fld0
+            found = False #Whether a note with a similar first field was found
+            if fld0idx:#Don't test for duplicate if there is no first field
+               fld0 = n.fields[fld0idx]
+               csum = fieldChecksum(fld0)
+               # first field must exist
+               if not fld0:
+                   self.log.append(_("Empty first field: %s") %
+                                   " ".join(n.fields))
+                   continue
+               # earlier in import?
+               if fld0 in firsts and self.importMode != 2:
+                   # duplicates in source file; log and ignore
+                   self.log.append(_("Appeared twice in file: %s") %
+                                   fld0)
+                   continue
+               firsts[fld0] = True
+               if csum in csums:
+                   # csum is not a guarantee; have to check
+                   for id in csums[csum]:
+                       flds = self.col.db.scalar(
+                           "select flds from notes where id = ?", id)
+                       sflds = splitFields(flds)
+                       if fld0 == sflds[0]:
+                           # duplicate
+                           found = True
+                           if self.importMode == 0:
+                               data = self.updateData(n, id, sflds)
+                               if data:
+                                   updates.append(data)
+                                   updateLog.append(updateLogTxt % fld0)
+                                   dupeCount += 1
+                                   found = True
+                           elif self.importMode == 1:
+                               dupeCount += 1
+                           elif self.importMode == 2:
+                               # allow duplicates in this case
+                               if fld0 not in dupes:
+                                   # only show message once, no matter how many
+                                   # duplicates are in the collection already
+                                   updateLog.append(dupeLogTxt % fld0)
+                                   dupes.append(fld0)
+                               found = False
+            # newly add
+            if not found:
+                data = self.newData(n)
+                if data:
+                    new.append(data)
+                    # note that we've seen this note once already
+                    if fld0idx:firsts[fld0] = True
+        self.addNew(new)
+        self.addUpdates(updates)
+        # make sure to update sflds, etc
+        self.col.updateFieldCache(self._ids)
+        # generate cards
+        if self.col.genCards(self._ids):
+            self.log.insert(0, _(
+                "Empty cards found. Please run Tools>Empty Cards."))
+        # apply scheduling updates
+        self.updateCards()
+        # we randomize or order here, to ensure that siblings
+        # have the same due#
+        did = self.col.decks.selected()
+        conf = self.col.decks.confForDid(did)
+        # in order due?
+        if conf['new']['order'] == NEW_CARDS_RANDOM:
+            self.col.sched.randomizeCards(did)
+        else:
+            self.col.sched.orderCards(did)
+
+        part1 = ngettext("%d note added", "%d notes added", len(new)) % len(new)
+        part2 = ngettext("%d note updated", "%d notes updated",
+                         self.updateCount) % self.updateCount
+        if self.importMode == 0:
+            unchanged = dupeCount - self.updateCount
+        elif self.importMode == 1:
+            unchanged = dupeCount
+        else:
+            unchanged = 0
+        part3 = ngettext("%d note unchanged", "%d notes unchanged",
+                         unchanged) % unchanged
+        self.log.append("%s, %s, %s." % (part1, part2, part3))
+        self.log.extend(updateLog)
+        if self._emptyNotes:
+            self.log.append(_("""\
+One or more notes were not imported, because they didn't generate any cards. \
+This can happen when you have empty fields or when you have not mapped the \
+content in the text file to the correct fields."""))
+        self.total = len(self._ids)
+
+        
+NoteImporter.importNotes=importNotes
+
+
+def changeMapInit(self, mw, model, current):
+    QDialog.__init__(self, mw, Qt.Window)
+    self.mw = mw
+    self.model = model
+    self.frm = aqt.forms.changemap.Ui_ChangeMap()
+    self.frm.setupUi(self)
+    n = 0
+    setCurrent = False
+    for field in self.model['flds']:
+        self.frm.fields.addItem(field['name'])
+        if current == field['name']:
+            setCurrent = True
+            self.frm.fields.setCurrentRow(n)
+        n += 1
+    self.frm.fields.addItem(QListWidgetItem(_("Tags")))
+    self.frm.fields.addItem(QListWidgetItem(_("Ignore field")))
+    if not setCurrent:
+        if current == "_tags":
+            self.frm.fields.setCurrentRow(n)
+        else:
+            self.frm.fields.setCurrentRow(n+1)
+    self.field = None
+
+ChangeMap.__init__= changeMapInit
