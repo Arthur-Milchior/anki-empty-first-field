@@ -4,14 +4,8 @@ Based on Damien Elmes <anki@ichi2.net>'s anki's code
 License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 Add-on number 46741504
 Feel free to contribute on https://github.com/Arthur-Milchior/anki-empty-first-field.
-
---------------------
-
-Allows notes to have an empty first field.
-Note that duplicates are not checked if no cards is sent to the first field.
-
-"maps to" does not appear anymore in the item import window. This will to use keyboard to find quickly the wanted field !
 """
+
 from aqt.qt import *
 import  cgi
 import unicodedata
@@ -30,8 +24,8 @@ import anki.importing as importing
 
 from anki.consts import NEW_CARDS_RANDOM
 from aqt.addcards import AddCards
-from aqt.utils import tooltip, showWarning,askUser, getOnlyText, getFile, showText, openHelp    
-from anki.utils import timestampID, fieldChecksum
+from aqt.utils import tooltip, showWarning,askUser, getOnlyText, getFile, showText, openHelp
+from anki.utils import *
 from anki.importing.noteimp import NoteImporter
 from aqt.importing import ChangeMap
 from anki.lang import ngettext
