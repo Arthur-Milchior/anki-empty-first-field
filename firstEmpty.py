@@ -28,7 +28,7 @@ from aqt.utils import tooltip, showWarning,askUser, getOnlyText, getFile, showTe
 from anki.utils import *
 from anki.importing.noteimp import NoteImporter
 from aqt.importing import ChangeMap
-from anki.lang import ngettext
+from anki.lang import ngettext, _
 
 def myAddNote(self, note):
         note.model()['did'] = self.deckChooser.selectedId()
@@ -194,7 +194,7 @@ This can happen when you have empty fields or when you have not mapped the \
 content in the text file to the correct fields."""))
         self.total = len(self._ids)
 
-        
+
 NoteImporter.importNotes=importNotes
 
 
