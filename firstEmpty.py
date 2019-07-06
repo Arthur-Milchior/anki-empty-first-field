@@ -105,6 +105,7 @@ def importNotes(self, notes):
                 n.fields[c] = unicodedata.normalize("NFC", n.fields[c])
             n.tags = [unicodedata.normalize("NFC", t) for t in n.tags]
             ###########start test fld0
+            found = False #Whether a note with a similar first field was found
             if fld0idx:#Don't test for duplicate if there is no first field. This is the only new thing here.
                fld0 = n.fields[fld0idx]
                csum = fieldChecksum(fld0)
@@ -120,7 +121,6 @@ def importNotes(self, notes):
                                    fld0)
                    continue
                firsts[fld0] = True
-               found = False #Whether a note with a similar first field was found
                if csum in csums:
                    # csum is not a guarantee; have to check
                    for id in csums[csum]:
