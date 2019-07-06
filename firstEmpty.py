@@ -35,7 +35,7 @@ def myAddNote(self, note):
         ret = note.dupeOrEmpty()
         if ret == 1:
             tooltip(_(
-                "The first field is empty."))
+                "The first field is empty."))# replace warning by tooltip
         if '{{cloze:' in note.model()['tmpls'][0]['qfmt']:
             if not self.mw.col.models._availClozeOrds(
                     note.model(), note.joinedFields(), False):
@@ -80,8 +80,8 @@ def importNotes(self, notes):
             else:
                 csums[csum] = [id]
         firsts = {}#mapping sending first field of added note to true
-        fld0name = self.model['flds'][0]['name']
-        fld0idx = self.mapping.index(fld0name) if fld0name in self.mapping else None
+        fld0name = self.model['flds'][0]['name']# NEW variable
+        fld0idx = self.mapping.index(fld0name) if fld0name in self.mapping else None #else case is new
         self._fmap = self.col.models.fieldMap(self.model)
         self._nextID = timestampID(self.col.db, "notes")
         # loop through the notes
@@ -98,15 +98,14 @@ def importNotes(self, notes):
         for n in notes:
             for c in range(len(n.fields)):
                 if not self.allowHTML:
-                    n.fields[c] = cgi.escape(n.fields[c])
+                    n.fields[c] = html.escape(n.fields[c])
                 n.fields[c] = n.fields[c].strip()
                 if not self.allowHTML:
                     n.fields[c] = n.fields[c].replace("\n", "<br>")
                 n.fields[c] = unicodedata.normalize("NFC", n.fields[c])
             n.tags = [unicodedata.normalize("NFC", t) for t in n.tags]
             ###########start test fld0
-            found = False #Whether a note with a similar first field was found
-            if fld0idx:#Don't test for duplicate if there is no first field
+            if fld0idx:#Don't test for duplicate if there is no first field. This is the only new thing here.
                fld0 = n.fields[fld0idx]
                csum = fieldChecksum(fld0)
                # first field must exist
@@ -121,6 +120,7 @@ def importNotes(self, notes):
                                    fld0)
                    continue
                firsts[fld0] = True
+               found = False #Whether a note with a similar first field was found
                if csum in csums:
                    # csum is not a guarantee; have to check
                    for id in csums[csum]:
@@ -153,7 +153,7 @@ def importNotes(self, notes):
                 if data:
                     new.append(data)
                     # note that we've seen this note once already
-                    if fld0idx:firsts[fld0] = True
+                    if fld0idx:firsts[fld0] = True #CHANGED
         self.addNew(new)
         self.addUpdates(updates)
         # make sure to update sflds, etc
@@ -171,8 +171,8 @@ def importNotes(self, notes):
         # in order due?
         if conf['new']['order'] == NEW_CARDS_RANDOM:
             self.col.sched.randomizeCards(did)
-        else:
-            self.col.sched.orderCards(did)
+        else:#NEW
+            self.col.sched.orderCards(did)#NEW
 
         part1 = ngettext("%d note added", "%d notes added", len(new)) % len(new)
         part2 = ngettext("%d note updated", "%d notes updated",
@@ -212,7 +212,7 @@ def changeMapInit(self, mw, model, current):
             setCurrent = True
             self.frm.fields.setCurrentRow(n)
         n += 1
-    self.frm.fields.addItem(QListWidgetItem(_("Tags")))
+    self.frm.fields.addItem(QListWidgetItem(_("Tags")))#Only difference: removes "Map to"
     self.frm.fields.addItem(QListWidgetItem(_("Ignore field")))
     if not setCurrent:
         if current == "_tags":
