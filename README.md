@@ -3,7 +3,6 @@
 
 ## Effect
 * Allows to add a note with an empty first field.
-* Allows to forbid adding a card without tag
 * Allows to import notes without having to select a position for the
   first field
 * If there are no first field, duplicates are not checked when you
