@@ -1,1 +1,0 @@
-Both configurations should be either true or false. They state what is allowed or not.
